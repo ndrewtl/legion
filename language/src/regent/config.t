@@ -55,6 +55,7 @@ local default_options = {
   ["index-launch"] = true,
   ["inline"] = true,
   ["future"] = true,
+  ["optimize_predicated_execution"] = true,
   ["leaf"] = true,
   ["inner"] = true,
   ["idempotent"] = true,
