@@ -123,6 +123,7 @@ function ast_util.mk_expr_call(fn, args, replicable)
   end
 
   return ast.typed.expr.Call {
+    predicate = false,
     fn = ast.typed.expr.Function {
       value = fn,
       expr_type = fn_type,

@@ -3779,6 +3779,7 @@ function codegen.expr_cast(cx, node)
     assert(fn.value == expr_type.result_type)
 
     local call = ast.typed.expr.Call {
+      predicate = false,
       fn = ast.typed.expr.Function {
         value = task,
         expr_type = task:get_type(),
@@ -7441,6 +7442,7 @@ function codegen.expr_unary(cx, node)
     local task = lift_unary_op_to_futures(node.op, rhs_type, expr_type)
 
     local call = ast.typed.expr.Call {
+      predicate = false,
       fn = ast.typed.expr.Function {
         value = task,
         expr_type = task:get_type(),
@@ -7570,6 +7572,7 @@ function codegen.expr_binary(cx, node)
       node.op, lhs_type, rhs_type, expr_type)
 
     local call = ast.typed.expr.Call {
+      predicate = false,
       fn = ast.typed.expr.Function {
         value = task,
         expr_type = task:get_type(),
