@@ -100,18 +100,31 @@ end
 
 local function do_nothing(cx, node) return node end
 
+-- analyze whether the given body can be predicated on the condition
+-- currently: return true iff the body has one statement and the statement is a Call
+local function can_predicate(body)
+  return table.getn(body.stats) == 1 and
+    body.stats[1].expr:is(ast.typed.expr.Call)
+end
+
+-- this is the meat of the optimization: Look at a statement, and if the condition and body meet
+-- certain criteria, transform it into a predicated call
+function optimize_predicated_execution.stat_if(cx, node)
+  if can_predicate(node.then_block) then
+    local predicated = node.then_block.stats[1].expr { predicate = node.cond }
+    return ast.typed.stat.Expr {
+      expr = predicated,
+      span = node.span,
+      annotations = node.annotations, -- TODO @ndrewtl confirm how to get these right
+    }
+    else
+      return node
+  end
+end
+
 local optimize_predicated_execution_stat_table = {
-  -- [ast.typed.stat.ForNum]    = optimize_index_launch.stat_for_num,
-  -- [ast.typed.stat.ForList]   = optimize_index_launch.stat_for_list,
-  --
-  -- [ast.typed.stat.While]     = optimize_index_launches.stat_block,
-  -- [ast.typed.stat.Repeat]    = optimize_index_launches.stat_block,
-  -- [ast.typed.stat.Block]     = optimize_index_launches.stat_block,
-  -- [ast.typed.stat.MustEpoch] = optimize_index_launches.stat_block,
-  -- [ast.typed.stat.While]     = optimize_index_launches.stat_block,
-  -- [ast.typed.stat.If]        = optimize_index_launches.stat_if,
-  -- [ast.typed.stat.Elseif]    = optimize_index_launches.stat_elseif,
-  [ast.typed.stat]           = do_nothing,
+  [ast.typed.stat.If]        = optimize_predicated_execution.stat_if,
+  [ast.typed.stat]        = do_nothing
 }
 
 local optimize_predicated_execution_stat = ast.make_single_dispatch(

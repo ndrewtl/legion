@@ -25,6 +25,7 @@ task condition()
 end
 
 task body()
+  return 1 + 1
 end
 
 task toplevel()

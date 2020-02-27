@@ -3468,6 +3468,14 @@ local function expr_call_setup_partition_arg(
   end
 end
 
+local function make_predicate(predicate, cx)
+  if predicate then
+    return c.legion_predicate_create(cx.runtime, cx, predicate)
+  else
+    return c.legion_predicate_true()
+  end
+end
+
 function codegen.expr_call(cx, node)
   local fn = codegen.expr(cx, node.fn):read(cx)
   local args = node.args:map(
@@ -3595,7 +3603,7 @@ function codegen.expr_call(cx, node)
       [codegen_hooks.gen_update_mapping_tag(tag, fn.value:has_mapping_tag_id(), cx.task)]
       var [launcher] = c.legion_task_launcher_create(
         [fn.value:get_task_id()], [task_args],
-        c.legion_predicate_true(), [mapper], [tag])
+        [make_predicate(node.predicate, cx)], [mapper], [tag])
       [args_setup]
     end
 
