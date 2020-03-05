@@ -100,17 +100,89 @@ end
 
 local function do_nothing(cx, node) return node end
 
+-- @param n the number of times to 'unroll' the loop
+local function predicate(condition, body, n)
+  -- only certain body statements can be predicated. For now, the only kind of expression that can
+  -- be predicated is an assignment that assigns a Call, that is, something of the form:
+  -- x = f(5), where f is a task
+  -- should return a block
+
+  -- default value of 1, so no unrolling
+  n = n or 1
+
+  -- this is our results object
+  local stats = terralib.newlist()
+
+  -- collect a list of new symbols
+  local symbols = terralib.newlist()
+  for i = 1,n do
+    -- Initialize a new symbol
+    -- TODO how to type the new symbol?
+    symbols:insert(terralib.newsymbol(bool))
+  end
+
+  for i = n, 1, -1 do
+    -- For each symbol, assign it the previous symbol's value. If it's the first symbol, give it
+    -- the value of body
+    if i == 1 then
+      stats:insert(
+        body.stats[1] {
+          lhs = symbols[1],
+          rhs = body.stats[1].rhs {
+            predicate = condition
+          }
+        }
+      )
+    else
+      stats:insert(
+        ast.typed.stat.Assignment {
+          lhs = symbols[i],
+          rhs = ast.typed.stat.Expr {
+            expr = ast.typed.expr.ID {
+              value = symbols[i - 1],
+              annotations = false,
+              span = body.span,
+              expr_type = body.stats[1].rhs.expr_type
+            },
+            annotations = false,
+            span = body.span
+          },
+          metadata = false,
+          annotations = false,
+          span = body.span
+        }
+      )
+    end
+  end
+
+  return {
+    cond = ast.typed.stat.Expr {
+      expr = condition.value,
+      annotations = false, -- TODO figure out what goes here
+      span = body.span
+    },
+    body = ast.typed.Block {
+      stats = stats,
+      span = body.span
+    }
+  }
+end
+
 -- analyze whether the given body can be predicated on the condition
--- currently: return true iff the body has one statement and the statement is a Call
-local function can_predicate(node)
-  return table.getn(node.then_block.stats) == 1 and
-    node.then_block.stats[1].expr:is(ast.typed.expr.Call) and
-    node.cond:is(ast.typed.expr.FutureGetResult)
+-- currently: return true iff the body is a block with only assignments of calls and the condition
+-- is a future
+local function can_predicate(condition, body)
+  return body:is(ast.typed.expr.Block) and
+    table.getn(body.stats) == 1 and
+    body.stats[1]:is(ast.typed.expr.Assignment) and
+    body.stats[1].rhs:is(ast.typed.expr.Call) and
+    condition:is(ast.typed.expr.FutureGetResult)
 end
 
 -- this is the meat of the optimization: Look at a statement, and if the condition and body meet
 -- certain criteria, transform it into a predicated call
 function optimize_predicated_execution.stat_if(cx, node)
+  print(predicate(node.cond, node.then_block, 3).body)
   if can_predicate(node) then
     local predicated = node.then_block.stats[1].expr { predicate = node.cond.value }
     return ast.typed.stat.Expr {

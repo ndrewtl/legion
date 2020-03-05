@@ -29,8 +29,9 @@ task body()
 end
 
 task toplevel()
+  var a = 1
   if condition() then
-    body()
+    a = body()
   end
 end
 
