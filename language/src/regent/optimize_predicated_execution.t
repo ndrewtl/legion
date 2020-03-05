@@ -102,16 +102,17 @@ local function do_nothing(cx, node) return node end
 
 -- analyze whether the given body can be predicated on the condition
 -- currently: return true iff the body has one statement and the statement is a Call
-local function can_predicate(body)
-  return table.getn(body.stats) == 1 and
-    body.stats[1].expr:is(ast.typed.expr.Call)
+local function can_predicate(node)
+  return table.getn(node.then_block.stats) == 1 and
+    node.then_block.stats[1].expr:is(ast.typed.expr.Call) and
+    node.cond:is(ast.typed.expr.FutureGetResult)
 end
 
 -- this is the meat of the optimization: Look at a statement, and if the condition and body meet
 -- certain criteria, transform it into a predicated call
 function optimize_predicated_execution.stat_if(cx, node)
-  if can_predicate(node.then_block) then
-    local predicated = node.then_block.stats[1].expr { predicate = node.cond }
+  if can_predicate(node) then
+    local predicated = node.then_block.stats[1].expr { predicate = node.cond.value }
     return ast.typed.stat.Expr {
       expr = predicated,
       span = node.span,

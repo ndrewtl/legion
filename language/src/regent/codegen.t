@@ -3470,9 +3470,9 @@ end
 
 local function make_predicate(predicate, cx)
   if predicate then
-    return c.legion_predicate_create(cx.runtime, cx, predicate)
+    return `c.legion_predicate_create([cx.runtime], [cx.context], [predicate].__result)
   else
-    return c.legion_predicate_true()
+    return `c.legion_predicate_true()
   end
 end
 
@@ -3484,9 +3484,11 @@ function codegen.expr_call(cx, node)
     function(condition)
       return codegen.expr_condition(cx, condition)
     end)
+  local predicate = node.predicate and codegen.expr(cx, node.predicate):read(cx)
 
   local actions = quote
     [fn.actions];
+    [predicate and predicate.actions];
     [args:map(function(arg) return arg.actions end)];
     [conditions:map(function(condition) return condition.actions end)];
     [emit_debuginfo(node)]
@@ -3603,7 +3605,7 @@ function codegen.expr_call(cx, node)
       [codegen_hooks.gen_update_mapping_tag(tag, fn.value:has_mapping_tag_id(), cx.task)]
       var [launcher] = c.legion_task_launcher_create(
         [fn.value:get_task_id()], [task_args],
-        [make_predicate(node.predicate, cx)], [mapper], [tag])
+        [make_predicate(predicate and predicate.value, cx)], [mapper], [tag])
       [args_setup]
     end
 
