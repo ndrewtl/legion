@@ -125,14 +125,26 @@ local function predicate(condition, body)
     local elseval = stat.lhs
     -- and the call should be the function,  predicated on the condition, with the elseval as a
     -- fallback
-    return stat.rhs {
+    local callexpr = stat.rhs {
       predicate = condition,
       -- predicate_else_value = elseval
     }
+
+    return ast.typed.stat.Expr {
+      expr = callexpr,
+      span = stat.span,
+      annotations = ast.default_annotations()
+    }
   end)
 
-  return body {
+  local block = body {
     stats = stats
+  }
+
+  return ast.typed.stat.Block {
+    block = block,
+    span = body.span,
+    annotations = ast.default_annotations()
   }
 end
 
@@ -140,10 +152,10 @@ end
 -- certain criteria, transform it into a predicated call
 function optimize_predicated_execution.stat_if(cx, node)
   if can_predicate(node.cond, node.then_block) then
-    print(predicate(node.cond, node.then_block))
+    return predicate(node.cond, node.then_block)
+    else
+      return node
   end
-
-  return node
 end
 
 local optimize_predicated_execution_stat_table = {
