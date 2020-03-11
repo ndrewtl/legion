@@ -100,99 +100,50 @@ end
 
 local function do_nothing(cx, node) return node end
 
--- @param n the number of times to 'unroll' the loop
-local function predicate(condition, body, n)
-  -- only certain body statements can be predicated. For now, the only kind of expression that can
-  -- be predicated is an assignment that assigns a Call, that is, something of the form:
-  -- x = f(5), where f is a task
-  -- should return a block
-
-  -- default value of 1, so no unrolling
-  n = n or 1
-
-  -- this is our results object
-  local stats = terralib.newlist()
-
-  -- collect a list of new symbols
-  local symbols = terralib.newlist()
-  for i = 1,n do
-    -- Initialize a new symbol
-    -- TODO how to type the new symbol?
-    symbols:insert(terralib.newsymbol(bool))
-  end
-
-  for i = n, 1, -1 do
-    -- For each symbol, assign it the previous symbol's value. If it's the first symbol, give it
-    -- the value of body
-    if i == 1 then
-      stats:insert(
-        body.stats[1] {
-          lhs = symbols[1],
-          rhs = body.stats[1].rhs {
-            predicate = condition
-          }
-        }
-      )
-    else
-      stats:insert(
-        ast.typed.stat.Assignment {
-          lhs = symbols[i],
-          rhs = ast.typed.stat.Expr {
-            expr = ast.typed.expr.ID {
-              value = symbols[i - 1],
-              annotations = false,
-              span = body.span,
-              expr_type = body.stats[1].rhs.expr_type
-            },
-            annotations = false,
-            span = body.span
-          },
-          metadata = false,
-          annotations = false,
-          span = body.span
-        }
-      )
-    end
-  end
-
-  return {
-    cond = ast.typed.stat.Expr {
-      expr = condition.value,
-      annotations = false, -- TODO figure out what goes here
-      span = body.span
-    },
-    body = ast.typed.Block {
-      stats = stats,
-      span = body.span
-    }
-  }
+-- return whether the given expr can be predicated, that is, if it is side-effect free
+local function sef(expr)
+  return expr:is(ast.typed.expr.Call)
 end
 
 -- analyze whether the given body can be predicated on the condition
 -- currently: return true iff the body is a block with only assignments of calls and the condition
 -- is a future
 local function can_predicate(condition, body)
-  return body:is(ast.typed.expr.Block) and
-    table.getn(body.stats) == 1 and
-    body.stats[1]:is(ast.typed.expr.Assignment) and
-    body.stats[1].rhs:is(ast.typed.expr.Call) and
+  return body:is(ast.typed.Block) and
+    body.stats:all(function(stat) return stat:is(ast.typed.stat.Assignment) and
+      sef(stat.rhs) end) and
     condition:is(ast.typed.expr.FutureGetResult)
+end
+
+-- @param condition the condition on which to predicate
+-- @param body a block
+-- condition and block must satisfy can_predicate(condition, block)
+local function predicate(condition, body)
+  local stats = body.stats:map(function(stat)
+    -- At this point, we assume stat is an assignment
+    -- The default value should the the left-hand side of the assignment, an ID expr
+    local elseval = stat.lhs
+    -- and the call should be the function,  predicated on the condition, with the elseval as a
+    -- fallback
+    return stat.rhs {
+      predicate = condition,
+      -- predicate_else_value = elseval
+    }
+  end)
+
+  return body {
+    stats = stats
+  }
 end
 
 -- this is the meat of the optimization: Look at a statement, and if the condition and body meet
 -- certain criteria, transform it into a predicated call
 function optimize_predicated_execution.stat_if(cx, node)
-  print(predicate(node.cond, node.then_block, 3).body)
-  if can_predicate(node) then
-    local predicated = node.then_block.stats[1].expr { predicate = node.cond.value }
-    return ast.typed.stat.Expr {
-      expr = predicated,
-      span = node.span,
-      annotations = node.annotations, -- TODO @ndrewtl confirm how to get these right
-    }
-    else
-      return node
+  if can_predicate(node.cond, node.then_block) then
+    print(predicate(node.cond, node.then_block))
   end
+
+  return node
 end
 
 local optimize_predicated_execution_stat_table = {
