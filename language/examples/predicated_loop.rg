@@ -21,7 +21,7 @@
 import "regent"
 
 task condition(i: int)
-  return i > 10
+  return i < 10
 end
 
 task body(i: int)
@@ -29,7 +29,7 @@ task body(i: int)
 end
 
 task toplevel()
-  var i = 1
+  var i = 0
   while condition(i) do
     i = body(i)
   end

@@ -102,7 +102,17 @@ local function do_nothing(cx, node) return node end
 
 -- return whether the given expr can be predicated, that is, if it is side-effect free
 local function sef(expr)
-  return expr:is(ast.typed.expr.Call)
+  return expr:is(ast.typed.expr.Call) or expr:is(ast.typed.expr.ID)
+end
+
+local function can_predicate_stat(stat)
+  if stat:is(ast.typed.stat.Assignment) then
+    return sef(stat.rhs)
+  elseif stat:is(ast.typed.stat.Var) then
+    return true
+  else
+    return false
+  end
 end
 
 -- analyze whether the given body can be predicated on the condition
@@ -110,8 +120,7 @@ end
 -- is a future
 local function can_predicate(condition, body)
   return body:is(ast.typed.Block) and
-    body.stats:all(function(stat) return stat:is(ast.typed.stat.Assignment) and
-      sef(stat.rhs) end) and
+    body.stats:all(can_predicate_stat) and
     condition:is(ast.typed.expr.FutureGetResult)
 end
 
@@ -159,9 +168,38 @@ function optimize_predicated_execution.stat_if(cx, node)
 end
 
 function optimize_predicated_execution.stat_while(cx, node)
-  local unrolls = std.config.optimize_predicated_execution_while_loop_unrolls
-  print(unrolls)
-  return node
+  if can_predicate(node.cond, node.block) then
+    -- Number of times to unroll
+    local n = std.config.optimize_predicated_execution_while_loop_unrolls
+    -- Symbols to allocate
+    local symbols = terralib.newlist()
+
+    -- First, allocate n new symbols
+    for i = 1,n do
+      symbols:insert(regentlib.newsymbol())
+    end
+
+    -- Statements in the block
+    local stats = terralib.newlist()
+
+    -- Var statements
+    for i= 1,symbols:getn() do
+      local symbol = symbols[i]
+      stats:insert(ast.typed.stat.Var {
+        symbol = symbol,
+        type = bool,
+        value = node.cond.value,
+        span = node.cond.span,
+        annotations = ast.default_annotations()
+      })
+    end
+
+    print(stats)
+
+    return node
+  else
+    return node
+  end
   -- if can_predicate(node.cond, node.then_block) then
   --   return predicate(node.cond, node.then_block)
   --   else
