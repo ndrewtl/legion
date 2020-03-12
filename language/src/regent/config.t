@@ -56,6 +56,8 @@ local default_options = {
   ["inline"] = true,
   ["future"] = true,
   ["optimize_predicated_execution"] = true,
+  ["optimize_predicated_execution_while_loop_unrolls"] = 2,
+  -- How many iterations ahead to launch simultaneously in a while loop
   ["leaf"] = true,
   ["inner"] = true,
   ["idempotent"] = true,

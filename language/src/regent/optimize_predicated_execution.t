@@ -158,8 +158,20 @@ function optimize_predicated_execution.stat_if(cx, node)
   end
 end
 
+function optimize_predicated_execution.stat_while(cx, node)
+  local unrolls = std.config.optimize_predicated_execution_while_loop_unrolls
+  print(unrolls)
+  return node
+  -- if can_predicate(node.cond, node.then_block) then
+  --   return predicate(node.cond, node.then_block)
+  --   else
+  --     return node
+  -- end
+end
+
 local optimize_predicated_execution_stat_table = {
   [ast.typed.stat.If]        = optimize_predicated_execution.stat_if,
+  [ast.typed.stat.While]     = optimize_predicated_execution.stat_while,
   [ast.typed.stat]        = do_nothing
 }
 
