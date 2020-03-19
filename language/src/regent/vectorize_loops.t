@@ -301,6 +301,7 @@ function flip_types.expr(cx, simd_width, symbol, node)
       }
       return ast.typed.expr.Call {
         predicate = false,
+        predicate_else_value = false,
         fn = ast.typed.expr.Function {
           expr_type = fn_type,
           value = fn,

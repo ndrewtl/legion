@@ -3790,6 +3790,7 @@ function codegen.expr_cast(cx, node)
 
     local call = ast.typed.expr.Call {
       predicate = false,
+      predicate_else_value = false,
       fn = ast.typed.expr.Function {
         value = task,
         expr_type = task:get_type(),
@@ -7453,6 +7454,7 @@ function codegen.expr_unary(cx, node)
 
     local call = ast.typed.expr.Call {
       predicate = false,
+      predicate_else_value = false,
       fn = ast.typed.expr.Function {
         value = task,
         expr_type = task:get_type(),
@@ -7583,6 +7585,7 @@ function codegen.expr_binary(cx, node)
 
     local call = ast.typed.expr.Call {
       predicate = false,
+      predicate_else_value = false,
       fn = ast.typed.expr.Function {
         value = task,
         expr_type = task:get_type(),

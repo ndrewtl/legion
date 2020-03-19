@@ -100,116 +100,92 @@ end
 
 local function do_nothing(cx, node) return node end
 
+-- Note: "can_predicate" means that the given expr or stat can safely run ahead,
+-- independent of a condition. This generally coincides with the notion of being
+-- side-effect free
+
 -- return whether the given expr can be predicated, that is, if it is side-effect free
-local function sef(expr)
+local function can_predicate_expr(expr)
   return expr:is(ast.typed.expr.Call) or expr:is(ast.typed.expr.ID)
+end
+
+-- @param elseval is optional
+local function predicate_expr(expr, condition, elseval)
+  if expr:is(ast.typed.expr.Call) then
+    assert(condition ~= nil)
+    elseval = elseval or false
+    return expr {
+      predicate = condition,
+      predicate_else_value = elseval
+    }
+  else return expr
+  end
 end
 
 local function can_predicate_stat(stat)
   if stat:is(ast.typed.stat.Assignment) then
-    return sef(stat.rhs)
-  elseif stat:is(ast.typed.stat.Var) then
-    return true
+    -- we can predicate assignments IF the rhs is side-effect-free
+    return can_predicate_expr(stat.rhs)
+  elseif stat:is(ast.typed.stat.Expr) then
+    return can_predicate_expr(stat.expr)
+  elseif stat:is(ast.typed.Block) then
+    return stat.stats:all(can_predicate_stat)
   else
     return false
   end
 end
 
--- analyze whether the given body can be predicated on the condition
--- currently: return true iff the body is a block with only assignments of calls and the condition
--- is a future
-local function can_predicate(condition, body)
-  return body:is(ast.typed.Block) and
-    body.stats:all(can_predicate_stat) and
-    condition:is(ast.typed.expr.FutureGetResult)
-end
-
--- @param condition the condition on which to predicate
--- @param body a block
--- condition and block must satisfy can_predicate(condition, block)
-local function predicate(condition, body)
-  local stats = body.stats:map(function(stat)
-    -- At this point, we assume stat is an assignment
-    -- The default value should the the left-hand side of the assignment, an ID expr
-    local elseval = stat.lhs
-    -- and the call should be the function,  predicated on the condition, with the elseval as a
-    -- fallback
-    local callexpr = stat.rhs {
-      predicate = condition,
-      -- predicate_else_value = elseval
+local function predicate_stat(stat, condition)
+  if stat:is(ast.typed.stat.Assignment) then
+    return stat {
+      rhs = predicate_expr(stat.rhs, condition, stat.lhs)
     }
-
-    return ast.typed.stat.Expr {
-      expr = callexpr,
-      span = stat.span,
-      annotations = ast.default_annotations()
+  elseif stat:is(ast.typed.stat.Expr) then
+    local expr = stat.expr
+    if expr:is(ast.typed.expr.Call) then
+      return ast.typed.stat.Expr {
+        expr = predicate_expr(expr, condition),
+        span = stat.span,
+        annotations = ast.default_annotations()
+      }
+    else
+      return ast.typed.stat.Expr {
+        expr = predicate_expr(stat.rhs, condition, stat.lhs),
+        span = stat.span,
+        annotations = ast.default_annotations()
+      }
+    end
+  elseif stat:is(ast.typed.Block) then
+    return stat {
+      stats = stat.stats:map(function(stat)
+        return predicate_stat(stat, condition)
+      end)
     }
-  end)
-
-  local block = body {
-    stats = stats
-  }
-
-  return ast.typed.stat.Block {
-    block = block,
-    span = body.span,
-    annotations = ast.default_annotations()
-  }
+  else
+    return stat
+  end
 end
 
 -- this is the meat of the optimization: Look at a statement, and if the condition and body meet
 -- certain criteria, transform it into a predicated call
 function optimize_predicated_execution.stat_if(cx, node)
-  if can_predicate(node.cond, node.then_block) then
-    return predicate(node.cond, node.then_block)
-    else
-      return node
-  end
-end
+  local block = node.then_block
+  local cond = node.cond:is(ast.typed.expr.FutureGetResult) and node.cond.value
 
-function optimize_predicated_execution.stat_while(cx, node)
-  if can_predicate(node.cond, node.block) then
-    -- Number of times to unroll
-    local n = std.config.optimize_predicated_execution_while_loop_unrolls
-    -- Symbols to allocate
-    local symbols = terralib.newlist()
-
-    -- First, allocate n new symbols
-    for i = 1,n do
-      symbols:insert(regentlib.newsymbol())
-    end
-
-    -- Statements in the block
-    local stats = terralib.newlist()
-
-    -- Var statements
-    for i= 1,symbols:getn() do
-      local symbol = symbols[i]
-      stats:insert(ast.typed.stat.Var {
-        symbol = symbol,
-        type = bool,
-        value = node.cond.value,
-        span = node.cond.span,
-        annotations = ast.default_annotations()
-      })
-    end
-
-    print(stats)
-
-    return node
+  if can_predicate_stat(block) then
+    local result = ast.typed.stat.Block {
+      block = predicate_stat(block, cond),
+      span = node.span,
+      annotations = ast.default_annotations()
+    }
+    return result
   else
     return node
   end
-  -- if can_predicate(node.cond, node.then_block) then
-  --   return predicate(node.cond, node.then_block)
-  --   else
-  --     return node
-  -- end
 end
 
 local optimize_predicated_execution_stat_table = {
   [ast.typed.stat.If]        = optimize_predicated_execution.stat_if,
-  [ast.typed.stat.While]     = optimize_predicated_execution.stat_while,
   [ast.typed.stat]        = do_nothing
 }
 

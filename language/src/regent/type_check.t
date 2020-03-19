@@ -1062,7 +1062,8 @@ function type_check.expr_call(cx, node)
     end)
 
   local result = ast.typed.expr.Call {
-    predicate = false, -- this should always be false at type-check time
+    predicate = false, -- these two values should always be false at type-check time
+    predicate_else_value = false,
     fn = fn,
     args = args,
     conditions = conditions,
