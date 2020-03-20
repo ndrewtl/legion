@@ -20,19 +20,44 @@
 
 import "regent"
 
-task condition()
+local c = regentlib.c
+
+task condition1()
+  c.usleep(500000)
   return true
 end
 
-task body()
+task condition2()
+  c.usleep(600000)
+  return true
+end
+
+task body1()
+  c.usleep(700000)
+  return 1 + 1
+end
+
+task body2()
+  c.usleep(800000)
   return 1 + 1
 end
 
 task toplevel()
-  var a = 1
-  if condition() then
-    a = body()
+  var t0 = c.legion_get_current_time_in_micros()
+  if condition1() then
+    body1()
   end
+  if condition2() then
+    body2()
+  end
+  var tf = c.legion_get_current_time_in_micros()
+  c.printf("%7.3f\n", 1e-6 * (tf - t0))
 end
 
-regentlib.start(toplevel)
+task main()
+  toplevel()
+end
+
+do
+  regentlib.start(main)
+end

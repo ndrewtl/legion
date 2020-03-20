@@ -3476,6 +3476,15 @@ local function make_predicate(predicate, cx)
   end
 end
 
+local function unmake_predicate(predicate, cx)
+  if predicate then
+    return `c.legion_predicate_destroy([predicate].__result)
+  else
+    return `nil
+  end
+end
+
+
 function codegen.expr_call(cx, node)
   local fn = codegen.expr(cx, node.fn):read(cx)
   local args = node.args:map(
@@ -3597,15 +3606,21 @@ function codegen.expr_call(cx, node)
     end
 
     local tag = terralib.newsymbol(c.legion_mapping_tag_id_t, "tag")
+    local predicate_symbol = terralib.newsymbol(c.legion_predicate_t, "predicate")
+    local should_destroy_predicate = terralib.newsymbol(bool, "should_destroy_predicate")
     local launcher_setup = quote
       var [task_args]
       [task_args_setup]
       var mapper = [fn.value:has_mapper_id() or 0]
       var [tag] = [fn.value:has_mapping_tag_id() or 0]
       [codegen_hooks.gen_update_mapping_tag(tag, fn.value:has_mapping_tag_id(), cx.task)]
+      -- TODO: figure this out-- it seems like predicates should only really be destroyed if
+      -- they are not the simple always-true predicate
+      var [should_destroy_predicate] = [predicate and predicate.value ~= nil]
+      var [predicate_symbol] = [make_predicate(predicate and predicate.value, cx)]
       var [launcher] = c.legion_task_launcher_create(
         [fn.value:get_task_id()], [task_args],
-        [make_predicate(predicate and predicate.value, cx)], [mapper], [tag])
+        [predicate_symbol], [mapper], [tag])
       [args_setup]
     end
 
@@ -3631,6 +3646,9 @@ function codegen.expr_call(cx, node)
       [actions]
       [launcher_setup]
       [launcher_execute]
+      if [should_destroy_predicate] then
+        c.legion_predicate_destroy([predicate_symbol])
+      end
     end
 
     local future_type = value_type
